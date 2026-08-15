@@ -1,0 +1,21 @@
+{
+  "name": "metaforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MetaForge - metadata-driven application framework. Business modules are configuration; the framework generates everything.",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w @metaforge/web",
+    "build:web": "npm run build -w @metaforge/web",
+    "start:web": "npm run start -w @metaforge/web",
+    "serve:web": "npm run build -w @metaforge/web && npm run start -w @metaforge/web",
+    "check:web": "npm run check -w @metaforge/web",
+    "dev:api": "cd apps/api && .venv/Scripts/uvicorn metaforge_api.api.main:app --reload --port 8000",
+    "dev:worker": "cd apps/api && .venv/Scripts/arq metaforge_api.worker.WorkerSettings"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,56 @@
+{
+	"/": [
+		"src/routes/+layout.ts",
+		"src/routes/+layout.ts"
+	],
+	"/admin/ai-settings": [
+		"src/routes/admin/ai-settings/+page.ts",
+		"src/routes/+layout.ts"
+	],
+	"/admin/approvals": [
+		"src/routes/admin/approvals/+page.ts",
+		"src/routes/+layout.ts"
+	],
+	"/admin/builder": [
+		"src/routes/admin/builder/+page.ts",
+		"src/routes/+layout.ts"
+	],
+	"/admin/tokens": [
+		"src/routes/admin/tokens/+page.ts",
+		"src/routes/+layout.ts"
+	],
+	"/admin/users": [
+		"src/routes/admin/users/+page.ts",
+		"src/routes/+layout.ts"
+	],
+	"/admin/webhooks": [
+		"src/routes/admin/webhooks/+page.ts",
+		"src/routes/+layout.ts"
+	],
+	"/api/[...path]": [
+		"src/routes/api/[...path]/+server.ts"
+	],
+	"/dashboard": [
+		"src/routes/dashboard/+page.ts",
+		"src/routes/+layout.ts"
+	],
+	"/login": [
+		"src/routes/+layout.ts"
+	],
+	"/period-close": [
+		"src/routes/period-close/+page.ts",
+		"src/routes/+layout.ts"
+	],
+	"/reports": [
+		"src/routes/reports/+page.ts",
+		"src/routes/+layout.ts"
+	],
+	"/[module]": [
+		"src/routes/[module]/+page.ts",
+		"src/routes/+layout.ts"
+	],
+	"/[module]/[id]": [
+		"src/routes/[module]/[id]/+page.ts",
+		"src/routes/+layout.ts"
+	]
+}
