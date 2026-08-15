@@ -92,6 +92,31 @@ class Role(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class OauthIdentity(Base):
+    """Binds one external OAuth/OIDC identity (Google, later Microsoft) to
+    a MetaForge User. `(provider, subject)` — the provider's own stable
+    subject id — is the actual login key, never email: an email can be
+    reused/reassigned at the provider, but `sub` never is. `email` is kept
+    as a snapshot for display/matching against pending org_invites, with
+    `email_verified` recording whether the provider itself attested it at
+    the time this identity was created — Google always verifies for a
+    normal consumer account; some providers (Microsoft) don't guarantee
+    it, which matters for how an invite may be auto-accepted (see the
+    provisioning/invite-resolution code paths for the actual check)."""
+
+    __tablename__ = "oauth_identities"
+    __table_args__ = (UniqueConstraint("provider", "subject", name="uq_oauth_identities_provider_subject"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("uuidv7()"))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Client(Base):
     """A tenant, SAP-MANDT style: every dynamic module row is stamped with
     one of these codes (see repository.py's client_code scoping) and every
@@ -113,7 +138,11 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("uuidv7()"))
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Nullable for an OAuth-only user (see OauthIdentity) — there is no
+    # password to verify for an account that only ever signs in via
+    # Google/Microsoft. auth.py's password-login path must check for None
+    # explicitly rather than relying on argon2 to reject it.
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

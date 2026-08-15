@@ -188,12 +188,21 @@ def require_permission(action: str):
     """Dependency factory: `module` must be a path parameter on the route
     it's used on. Default-deny — a module absent from the role's
     `module_permissions` map, or missing this specific action key, means
-    no access, not "assume yes." Admin roles bypass this entirely."""
+    no access, not "assume yes." Admin roles bypass this entirely.
+
+    A `"*"` entry in `module_permissions` grants that action on every
+    BUSINESS module (never on a `system.*` key — those always require
+    being named explicitly, see require_system below) — this is what lets
+    an Org Admin role say "everything" once, instead of enumerating every
+    module in the registry and needing to be re-edited each time Builder
+    adds one."""
 
     async def _check(module: str, user: CurrentUserDep) -> CurrentUser:
         if user.is_admin:
             return user
         allowed = bool(user.module_permissions.get(module, {}).get(action))
+        if not allowed and not module.startswith("system."):
+            allowed = bool(user.module_permissions.get("*", {}).get(action))
         if not allowed:
             raise HTTPException(403, f"not permitted: {action} on {module}")
         return user
@@ -202,11 +211,39 @@ def require_permission(action: str):
 
 
 async def require_admin(user: CurrentUserDep) -> CurrentUser:
-    """/admin/builder and /admin/roles change what every user can do and
-    see — gated to admin roles only, not just "logged in.\""""
+    """Platform-admin only — /admin/builder, /admin/roles, /admin/clients,
+    and everything else that's cross-tenant or edits the module schema
+    every org's tables are built from. This is deliberately NOT delegable
+    via `system.*` capabilities (see require_system): a tenant editing
+    FieldMetadata would alter every other tenant's tables, so Builder
+    access has no org-scoped equivalent, ever."""
     if not user.is_admin:
         raise HTTPException(403, "admin role required")
     return user
 
 
 AdminUser = Annotated[CurrentUser, Depends(require_admin)]
+
+
+def require_system(capability: str):
+    """Dependency factory for the org-scoped admin surface (api/routers/
+    org_admin.py) — e.g. require_system("org_users") for user/invite
+    management scoped to the caller's own client_code. Passes for a
+    platform admin (is_admin, unconditional bypass, same as
+    require_permission) OR a role explicitly granted
+    module_permissions["system.<capability>"]["manage"] — this is a
+    reserved pseudo-module namespace, never a real business module name,
+    checked by the exact same merge_roles()-produced dict business
+    modules use, just under a "system." prefix that require_permission's
+    wildcard handling deliberately excludes (an org admin's "*" business
+    grant must never silently imply a system capability)."""
+
+    async def _check(user: CurrentUserDep) -> CurrentUser:
+        if user.is_admin:
+            return user
+        allowed = bool(user.module_permissions.get(f"system.{capability}", {}).get("manage"))
+        if not allowed:
+            raise HTTPException(403, f"not permitted: system.{capability}")
+        return user
+
+    return _check

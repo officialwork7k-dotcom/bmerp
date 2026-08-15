@@ -34,5 +34,13 @@ class Settings(BaseSettings):
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
 
+    # Google OAuth (see api/routers/oauth.py). public_base_url is the
+    # externally-reachable origin used to build the callback URL — must
+    # exactly match what's registered as an Authorized redirect URI in
+    # Google Cloud Console (that URI is `{public_base_url}/api/auth/oauth/google/callback`).
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    public_base_url: str | None = None
+
 
 settings = Settings()

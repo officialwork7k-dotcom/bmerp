@@ -60,7 +60,13 @@ async def login(body: LoginIn, response: Response, session: DbSession):
     if user is not None and user.locked_until is not None and user.locked_until > now:
         raise HTTPException(429, "account temporarily locked; try again later")
 
-    valid = user is not None and user.is_active and _pwd.verify(body.password, user.password_hash)
+    # An OAuth-only user (see OauthIdentity) has no password_hash — reject
+    # explicitly rather than handing passlib a None hash, which raises
+    # instead of just returning False.
+    valid = (
+        user is not None and user.is_active and user.password_hash is not None
+        and _pwd.verify(body.password, user.password_hash)
+    )
     if not valid:
         if user is not None:
             user.failed_login_count += 1
