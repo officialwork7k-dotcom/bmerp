@@ -157,6 +157,13 @@
 		<SidebarItem href="/admin/tokens" label="API Tokens" active={path.startsWith('/admin/tokens')} {collapsed} />
 	</div>
 
+	{#if !auth.user?.is_admin && (auth.user?.module_permissions?.['system.org_users']?.manage || auth.user?.module_permissions?.['system.ai_settings']?.manage)}
+		<div class="mt-auto">
+			{#if !collapsed}<p class="mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">My Organization</p>{/if}
+			<SidebarItem href="/org/admin" label="Organization" active={path.startsWith('/org/admin')} {collapsed} />
+		</div>
+	{/if}
+
 	{#if auth.user?.is_admin}
 		<div class="mt-auto">
 			{#if !collapsed}<p class="mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">Admin</p>{/if}

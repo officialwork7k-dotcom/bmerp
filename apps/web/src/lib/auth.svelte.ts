@@ -3,7 +3,11 @@ export interface CurrentUser {
 	username: string;
 	display_name: string;
 	is_admin: boolean;
-	module_permissions: Record<string, { read?: boolean; create?: boolean; update?: boolean; delete?: boolean }>;
+	// Values are usually {read?/create?/update?/delete?} for business
+	// modules, but a "system.<capability>" key (see api/deps.py's
+	// require_system) uses {manage?: boolean} instead — same map, a
+	// different action vocabulary for that reserved key prefix.
+	module_permissions: Record<string, { read?: boolean; create?: boolean; update?: boolean; delete?: boolean; manage?: boolean }>;
 	theme: string;
 	/** Active SAP-MANDT-style tenant for this session — see api/deps.py. */
 	client_code: string;

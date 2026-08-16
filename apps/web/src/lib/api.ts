@@ -248,6 +248,32 @@ export interface AiSettings {
 	public_base_url: string | null;
 }
 
+export interface OrgUser {
+	id: string;
+	username: string;
+	display_name: string;
+	is_active: boolean;
+	role_names: string[];
+}
+
+export interface OrgInvite {
+	id: string;
+	email: string;
+	role_name: string;
+	status: 'pending' | 'accepted' | 'revoked' | 'expired';
+	expires_at: string;
+	created_at: string;
+}
+
+export interface OrgAiSettings {
+	provider: 'gemini' | 'openai' | null;
+	gemini_model: string | null;
+	openai_model: string | null;
+	gemini_key_set: boolean;
+	openai_key_set: boolean;
+	discount_tax_treatment: 'before_tax' | 'after_tax' | null;
+}
+
 export interface TelegramLinkStatus {
 	linked: boolean;
 	telegram_username?: string | null;
@@ -588,7 +614,18 @@ export function createApi(fetchImpl: typeof fetch = fetch) {
 
 		getTelegramLink: () => request<TelegramLinkStatus>('/telegram/link'),
 		generateTelegramLinkCode: () => request<TelegramLinkCodeResult>('/telegram/link-code', { method: 'POST' }),
-		unlinkTelegram: () => request<{ ok: boolean }>('/telegram/link', { method: 'DELETE' })
+		unlinkTelegram: () => request<{ ok: boolean }>('/telegram/link', { method: 'DELETE' }),
+
+		listOrgUsers: () => request<OrgUser[]>('/org/users'),
+		deactivateOrgUser: (id: string) => request<{ ok: boolean }>(`/org/users/${id}/deactivate`, { method: 'POST' }),
+		listOrgInvites: () => request<OrgInvite[]>('/org/invites'),
+		createOrgInvite: (email: string, roleName: string) =>
+			request<OrgInvite>('/org/invites', { method: 'POST', body: JSON.stringify({ email, role_name: roleName }) }),
+		revokeOrgInvite: (id: string) => request<void>(`/org/invites/${id}`, { method: 'DELETE' }),
+		getOrgAiSettings: () => request<OrgAiSettings>('/org/ai-settings'),
+		saveOrgAiSettings: (
+			body: Omit<OrgAiSettings, 'gemini_key_set' | 'openai_key_set'> & { gemini_api_key?: string; openai_api_key?: string }
+		) => request<OrgAiSettings>('/org/ai-settings', { method: 'PUT', body: JSON.stringify(body) })
 	};
 }
 
