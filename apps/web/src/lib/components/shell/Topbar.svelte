@@ -59,18 +59,27 @@
 		{#if auth.user}
 			<GlobalSearch />
 		{/if}
-		{#if auth.user && auth.user.available_clients.length > 1}
-			<select
-				value={auth.user.client_code}
-				onchange={onSwitchOrg}
-				disabled={switching}
-				aria-label="Switch organization"
-				class="rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-xs font-medium text-neutral-600 outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"
-			>
-				{#each auth.user.available_clients as code (code)}
-					<option value={code}>{code}</option>
-				{/each}
-			</select>
+		{#if auth.user}
+			{#if auth.user.organizations.length > 1}
+				<select
+					value={auth.user.client_code}
+					onchange={onSwitchOrg}
+					disabled={switching}
+					aria-label="Switch organization"
+					class="max-w-[9rem] truncate rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-xs font-medium text-neutral-600 outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"
+				>
+					{#each auth.user.organizations as org (org.code)}
+						<option value={org.code}>{org.name}</option>
+					{/each}
+				</select>
+			{:else}
+				<span
+					class="hidden max-w-[9rem] truncate text-xs font-medium text-neutral-500 sm:inline dark:text-neutral-400"
+					title={auth.user.client_name}
+				>
+					{auth.user.client_name}
+				</span>
+			{/if}
 		{/if}
 		<ThemeSwitcher />
 		{#if auth.user}

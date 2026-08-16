@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from metaforge_api.api.deps import CurrentUserDep, DbSession, _resolve_client_code, merge_roles
 from metaforge_api.infrastructure import cache
-from metaforge_api.infrastructure.models import User
+from metaforge_api.infrastructure.models import Client, User
 from metaforge_api.infrastructure.settings import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -29,6 +29,14 @@ _COOKIE_NAME = "mf_session"
 _TOKEN_TTL = timedelta(hours=8)
 _MAX_FAILED_ATTEMPTS = 5
 _LOCKOUT = timedelta(minutes=15)
+
+
+def _organizations(clients: list[Client]) -> list[dict]:
+    return sorted(({"code": c.code, "name": c.name} for c in clients), key=lambda o: o["code"])
+
+
+def _client_name(clients: list[Client], code: str) -> str:
+    return next((c.name for c in clients if c.code == code), code)
 
 
 class LoginIn(BaseModel):
@@ -101,7 +109,9 @@ async def login(body: LoginIn, response: Response, session: DbSession):
         "module_permissions": module_permissions,
         "theme": user.theme,
         "client_code": client_code,
+        "client_name": _client_name(user.clients, client_code),
         "available_clients": sorted(c.code for c in user.clients),
+        "organizations": _organizations(user.clients),
     }
 
 
@@ -129,7 +139,9 @@ async def me(user: CurrentUserDep, session: DbSession):
         "module_permissions": user.module_permissions,
         "theme": user.theme,
         "client_code": user.client_code,
+        "client_name": _client_name(row.clients, user.client_code) if row else user.client_code,
         "available_clients": sorted(c.code for c in row.clients) if row else [user.client_code],
+        "organizations": _organizations(row.clients) if row else [{"code": user.client_code, "name": user.client_code}],
     }
 
 
@@ -175,7 +187,9 @@ async def switch_client(body: SwitchClientIn, request: Request, response: Respon
         "module_permissions": module_permissions,
         "theme": row.theme,
         "client_code": client_code,
+        "client_name": _client_name(row.clients, client_code),
         "available_clients": sorted(c.code for c in row.clients),
+        "organizations": _organizations(row.clients),
     }
 
 

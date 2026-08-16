@@ -9,7 +9,12 @@ few seconds ago," which a signature+expiry check does without needing
 Valkey/DB round trips or cleanup.
 
 Resolution ladder at the callback, in order:
-1. (provider, subject) already linked to a User -> normal login.
+1. (provider, subject) already linked to a User -> normal login. Any
+   pending, unexpired OrgInvite(s) matching the verified email are also
+   attached on this path (not just on first-ever login) — an org admin
+   can invite an already-registered Google account to a second (or
+   third...) org, and it takes effect on their very next sign-in rather
+   than being silently dropped because an identity already existed.
 2. No identity, but the verified email matches a pending, unexpired
    OrgInvite -> accept it: create the User pre-scoped to that org and
    role, mark the invite accepted. An invite always wins over
@@ -40,6 +45,7 @@ import jwt
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from metaforge_api.api.deps import DbSession
 from metaforge_api.api.routers.auth import _COOKIE_NAME, _TOKEN_TTL, _issue_token
@@ -48,6 +54,44 @@ from metaforge_api.infrastructure.models import Client, OauthIdentity, OrgInvite
 from metaforge_api.infrastructure.settings import settings
 
 router = APIRouter(prefix="/api/auth/oauth", tags=["oauth"])
+
+
+async def _attach_pending_invites(session: AsyncSession, user: User, email: str, *, exclude_invite_id: uuid.UUID | None = None) -> None:
+    """Folds every other pending, unexpired invite for this verified email
+    into `user` — org(s) + role(s) it doesn't already have. Runs on both
+    the existing-identity login path and the just-provisioned/just-accepted
+    path, so a user invited to several orgs (in any order relative to their
+    first login) ends up assigned to all of them rather than only whichever
+    invite happened to be resolved first."""
+    rows = (
+        await session.execute(
+            select(OrgInvite).where(
+                OrgInvite.email == email,
+                OrgInvite.status == "pending",
+                OrgInvite.expires_at > datetime.now(timezone.utc),
+                OrgInvite.id != exclude_invite_id if exclude_invite_id is not None else True,
+            )
+        )
+    ).scalars().all()
+    if not rows:
+        return
+
+    assigned_codes = {c.code for c in user.clients}
+    assigned_role_ids = {r.id for r in user.roles}
+    for invite in rows:
+        client = (await session.execute(select(Client).where(Client.code == invite.client_code))).scalar_one_or_none()
+        if client is None:
+            continue
+        if client.code not in assigned_codes:
+            user.clients.append(client)
+            assigned_codes.add(client.code)
+        if invite.role_id not in assigned_role_ids:
+            role = (await session.execute(select(Role).where(Role.id == invite.role_id))).scalar_one_or_none()
+            if role is not None:
+                user.roles.append(role)
+                assigned_role_ids.add(role.id)
+        invite.status = "accepted"
+        invite.accepted_user_id = user.id
 
 _STATE_TTL = timedelta(minutes=10)
 _GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -134,6 +178,8 @@ async def google_callback(code: str, state: str, session: DbSession):
     if identity is not None:
         user = (await session.execute(select(User).where(User.id == identity.user_id))).scalar_one()
         identity.last_login_at = datetime.now(timezone.utc)
+        if email_verified:
+            await _attach_pending_invites(session, user, email)
     else:
         if not email_verified:
             raise HTTPException(403, "Google account email is not verified — cannot create an account from it")
@@ -159,8 +205,10 @@ async def google_callback(code: str, state: str, session: DbSession):
             await session.flush()
             invite.status = "accepted"
             invite.accepted_user_id = user.id
+            await _attach_pending_invites(session, user, email, exclude_invite_id=invite.id)
         else:
             user = await provisioning.provision_org(session, email=email, display_name=name)
+            await _attach_pending_invites(session, user, email)
 
         identity = OauthIdentity(
             user_id=user.id, provider="google", subject=subject, email=email, email_verified=email_verified,

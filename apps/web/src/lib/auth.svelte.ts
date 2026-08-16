@@ -11,9 +11,13 @@ export interface CurrentUser {
 	theme: string;
 	/** Active SAP-MANDT-style tenant for this session — see api/deps.py. */
 	client_code: string;
+	/** Display name of the active client_code — e.g. "Acme Inc" for "C0002". */
+	client_name: string;
 	/** Every client this user is assigned to — more than one entry means the
 	 * org switcher in Topbar has something to switch between. */
 	available_clients: string[];
+	/** Same set as available_clients, paired with display names for the UI. */
+	organizations: { code: string; name: string }[];
 }
 
 /**
