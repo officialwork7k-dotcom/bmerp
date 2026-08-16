@@ -307,8 +307,16 @@
 						Unlink
 					</button>
 				{:else if aiChat.telegramLinkCode}
+					{#if aiChat.telegramLinkCode.bot_username}
+						<p class="text-neutral-500">
+							On your own phone, open Telegram and message
+							<span class="font-medium">@{aiChat.telegramLinkCode.bot_username}</span>
+							— it's the same assistant bot everyone in MetaForge uses; linking your own account keeps your chat
+							with it private to you.
+						</p>
+					{/if}
 					<p class="text-neutral-500">
-						In Telegram, send this to the bot:
+						Send it this code:
 						<code class="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs dark:bg-neutral-800">/link {aiChat.telegramLinkCode.code}</code>
 					</p>
 					{#if aiChat.telegramLinkCode.deep_link}
@@ -320,6 +328,10 @@
 						>
 							Open in Telegram
 						</a>
+					{:else}
+						<p class="text-xs text-amber-600 dark:text-amber-400">
+							The bot's username isn't set up yet — ask your administrator to finish the Telegram configuration.
+						</p>
 					{/if}
 					<p class="text-xs text-neutral-400">Expires {new Date(aiChat.telegramLinkCode.expires_at).toLocaleTimeString()}.</p>
 				{:else}
