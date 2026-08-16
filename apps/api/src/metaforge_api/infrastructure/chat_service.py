@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import copy
 import hashlib
 import json
 import uuid
@@ -47,7 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from metaforge_api.infrastructure import ai_tools, cache, doc_extraction, llm
 from metaforge_api.infrastructure.dynamic_tables import resolve_table
 from metaforge_api.infrastructure.fuzzy_match import fuzzy_search
-from metaforge_api.infrastructure.models import AiConversation, AiConversationMessage, AiSettings, AiToolCall, Client
+from metaforge_api.infrastructure.models import AiConversation, AiConversationMessage, AiSettings, AiSettingsOverride, AiToolCall, Client
 from metaforge_api.infrastructure.repository import DataRepository
 
 _MAX_TOOL_ITERATIONS = 12
@@ -57,10 +58,33 @@ _ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 _MAX_IMAGE_BASE64_CHARS = 8_000_000  # ~6MB decoded — client preprocessing should land far under this
 
 
-async def load_ai_settings(session: AsyncSession) -> AiSettings | None:
-    return (
+_OVERRIDABLE_AI_FIELDS = ("provider", "gemini_api_key", "gemini_model", "openai_api_key", "openai_model", "discount_tax_treatment")
+
+
+async def load_ai_settings(session: AsyncSession, client_code: str | None = None) -> AiSettings | None:
+    """The instance-wide singleton, merged with the caller's org's
+    AiSettingsOverride row (if any) — see that model's docstring for
+    exactly which fields are safe to override (provider/keys/model/
+    discount-tax-treatment) versus which stay platform-only forever
+    (Telegram config, auto_post_amount_cap, write_allowed_modules). The
+    returned object is a plain in-memory copy, never added to the session
+    — nothing here is ever meant to be persisted, only read."""
+    base = (
         await session.execute(select(AiSettings).order_by(AiSettings.created_at.asc()).limit(1))
     ).scalar_one_or_none()
+    if base is None or client_code is None:
+        return base
+    override = (
+        await session.execute(select(AiSettingsOverride).where(AiSettingsOverride.client_code == client_code))
+    ).scalar_one_or_none()
+    if override is None:
+        return base
+    merged = copy.copy(base)
+    for field in _OVERRIDABLE_AI_FIELDS:
+        value = getattr(override, field)
+        if value is not None:
+            setattr(merged, field, value)
+    return merged
 
 
 async def _load_or_create_conversation(session: AsyncSession, user, conversation_id: str | None) -> tuple[AiConversation, list[dict[str, Any]]]:
@@ -496,7 +520,7 @@ async def run_chat_turn(
     if not allowed:
         raise HTTPException(429, "AI assistant rate limit reached — try again in a minute")
 
-    ai_settings = await load_ai_settings(session)
+    ai_settings = await load_ai_settings(session, user.client_code)
     if ai_settings is None or not ai_settings.enabled:
         raise HTTPException(400, "AI assistant is not enabled — ask an admin to configure it under AI Assistant settings")
     api_key = ai_settings.gemini_api_key if ai_settings.provider == "gemini" else ai_settings.openai_api_key

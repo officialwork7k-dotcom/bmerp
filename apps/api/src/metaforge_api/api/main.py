@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from metaforge_api.api.routers import admin, ai_chat, ai_conversations, ai_settings, approvals, auth, clearing, data, document_flow, financial_reports, gl, modules, notifications, number_series, oauth, periodic_runs, price_lists, reports, saved_views, search, stock, telegram_link, tokens, uploads, webhooks
+from metaforge_api.api.routers import admin, ai_chat, ai_conversations, ai_settings, approvals, auth, clearing, data, document_flow, financial_reports, gl, modules, notifications, number_series, oauth, org_admin, periodic_runs, price_lists, reports, saved_views, search, stock, telegram_link, tokens, uploads, webhooks
 from metaforge_api.infrastructure import depreciation  # noqa: F401 - side effect: registers the "asset_depreciation" periodic run
 from metaforge_api.infrastructure import telegram_poller
 
@@ -29,6 +29,7 @@ app.include_router(modules.router)
 app.include_router(data.router)
 app.include_router(auth.router)
 app.include_router(oauth.router)
+app.include_router(org_admin.router)
 app.include_router(uploads.router)
 app.include_router(admin.router)
 app.include_router(notifications.router)

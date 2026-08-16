@@ -117,6 +117,57 @@ class OauthIdentity(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class OrgInvite(Base):
+    """An org admin's invitation for a specific email to join their org
+    with a specific role — resolved at OAuth callback time (see
+    api/routers/oauth.py) by matching the provider's VERIFIED email
+    against a pending, unexpired invite for that address. No accept-token:
+    the OIDC provider's own verified-email attestation is the assurance
+    that email-based invites otherwise lack, so requiring a second
+    clicked link would add phishing surface without adding real trust.
+    `status` moves pending -> accepted|revoked|expired; a partial unique
+    index (see migration) allows re-inviting the same address only after
+    the prior pending row has moved off `pending`."""
+
+    __tablename__ = "org_invites"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("uuidv7()"))
+    client_code: Mapped[str] = mapped_column(String(10), ForeignKey("clients.code", ondelete="CASCADE"), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    role_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="RESTRICT"), nullable=False)
+    invited_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AiSettingsOverride(Base):
+    """Per-org override of a subset of the AiSettings singleton — one row
+    per client_code, all-nullable, NULL meaning "inherit the platform
+    default." Deliberately NOT merged into AiSettings itself (see that
+    class's docstring): roughly half of AiSettings is structurally
+    instance-level (Telegram bot config, the auto-post amount cap and
+    write-allowed-modules guardrails) and must never be overridable by a
+    tenant — this table only ever carries the fields that are genuinely
+    safe to let an org customize (which provider/key/model it uses, and
+    its own discount-tax-treatment default). Same masked-secret discipline
+    as AiSettings applies wherever this is read back out over the API."""
+
+    __tablename__ = "ai_settings_overrides"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("uuidv7()"))
+    client_code: Mapped[str] = mapped_column(String(10), ForeignKey("clients.code", ondelete="CASCADE"), nullable=False, unique=True)
+    provider: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    gemini_api_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    gemini_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    openai_api_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    openai_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    discount_tax_treatment: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class Client(Base):
     """A tenant, SAP-MANDT style: every dynamic module row is stamped with
     one of these codes (see repository.py's client_code scoping) and every

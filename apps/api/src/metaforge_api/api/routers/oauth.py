@@ -10,20 +10,22 @@ Valkey/DB round trips or cleanup.
 
 Resolution ladder at the callback, in order:
 1. (provider, subject) already linked to a User -> normal login.
-2. No identity, but the verified email matches this user's own existing
-   account by username -> not supported in v1 (see provisioning.py's
-   docstring); every new (provider, subject) either matches a prior OAuth
-   login or provisions a brand-new org. Linking Google onto an existing
-   password account is a deliberately deferred "logged-in link" flow, not
-   done implicitly here — implicit email-matching to an EXISTING account
-   is exactly the account-takeover shape this file avoids (see point 3).
-3. No identity at all -> self-service provisioning (provisioning.py):
-   brand-new Client + User seeded as that org's Org Admin + starter data.
+2. No identity, but the verified email matches a pending, unexpired
+   OrgInvite -> accept it: create the User pre-scoped to that org and
+   role, mark the invite accepted. An invite always wins over
+   self-registration — an org admin explicitly granting this email access
+   takes priority over spinning up a brand-new org for it.
+3. Neither -> self-service provisioning (provisioning.py): brand-new
+   Client + User seeded as that org's Org Admin + starter data.
 
-Google's `email_verified` claim is required before the email is trusted
-for anything (matches this file's own account, or is used as the new
-org's display seed) — an unverified email is never sufficient grounds to
-attach to an existing identity or org.
+Linking Google onto an existing PASSWORD account by email match is
+deliberately not done anywhere in this ladder — that's a separate
+"logged-in link my account" flow, not implicit email-matching, which is
+exactly the account-takeover shape this file avoids. Google's
+`email_verified` claim is required before the email is trusted for
+anything (invite matching or the new org's display seed) — an unverified
+email is never sufficient grounds to attach to an invite or existing
+identity.
 """
 
 from __future__ import annotations
@@ -42,7 +44,7 @@ from sqlalchemy import select
 from metaforge_api.api.deps import DbSession
 from metaforge_api.api.routers.auth import _COOKIE_NAME, _TOKEN_TTL, _issue_token
 from metaforge_api.infrastructure import cache, provisioning
-from metaforge_api.infrastructure.models import OauthIdentity, User
+from metaforge_api.infrastructure.models import Client, OauthIdentity, OrgInvite, Role, User
 from metaforge_api.infrastructure.settings import settings
 
 router = APIRouter(prefix="/api/auth/oauth", tags=["oauth"])
@@ -135,7 +137,31 @@ async def google_callback(code: str, state: str, session: DbSession):
     else:
         if not email_verified:
             raise HTTPException(403, "Google account email is not verified — cannot create an account from it")
-        user = await provisioning.provision_org(session, email=email, display_name=name)
+
+        # An invite always wins over self-registration — an org admin
+        # explicitly granting this email access to their org takes
+        # priority over spinning up a brand-new one for it.
+        invite = (
+            await session.execute(
+                select(OrgInvite).where(
+                    OrgInvite.email == email, OrgInvite.status == "pending", OrgInvite.expires_at > datetime.now(timezone.utc)
+                )
+            )
+        ).scalar_one_or_none()
+
+        if invite is not None:
+            role = (await session.execute(select(Role).where(Role.id == invite.role_id))).scalar_one()
+            client = (await session.execute(select(Client).where(Client.code == invite.client_code))).scalar_one()
+            user = User(username=email, display_name=name, password_hash=None, default_client_code=invite.client_code)
+            user.roles.append(role)
+            user.clients.append(client)
+            session.add(user)
+            await session.flush()
+            invite.status = "accepted"
+            invite.accepted_user_id = user.id
+        else:
+            user = await provisioning.provision_org(session, email=email, display_name=name)
+
         identity = OauthIdentity(
             user_id=user.id, provider="google", subject=subject, email=email, email_verified=email_verified,
             last_login_at=datetime.now(timezone.utc),

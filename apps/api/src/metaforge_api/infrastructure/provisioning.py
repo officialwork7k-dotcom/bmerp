@@ -89,6 +89,7 @@ async def _org_admin_role(session: AsyncSession) -> Role:
         module_permissions={
             "*": {"read": True, "create": True, "update": True, "delete": True},
             "system.org_users": {"manage": True},
+            "system.ai_settings": {"manage": True},
         },
     )
     session.add(role)
